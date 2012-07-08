@@ -1,0 +1,8 @@
+body {
+	text-align: center;
+	background-color: gray;
+}
+
+#gameBoard {
+	margin-top: 100px;
+}
