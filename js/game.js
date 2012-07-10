@@ -1,28 +1,42 @@
 $(function() {
-	var game = new Game();
+	var game = new Game("gameBoard");
 	game.start();
 });
 
-var Game = function() {
-	var canvas;
-	var ctx;
+var Game = function(canvasId) {
+	var canvas = document.getElementById(canvasId);
+	var	ctx = canvas.getContext("2d");
 	var resource;
 	var stop = true;
+	var poking = new Poking();
 	var getHeaders = function() {
 		return ["http://tp4.sinaimg.cn/1631661635/180/5617663956/1",
 			   "http://tp1.sinaimg.cn/2808421224/180/5635985227/1",
 			   "http://tp4.sinaimg.cn/1925320323/180/5635995277/1",
-			   "http://tp3.sinaimg.cn/1584480830/180/5629789926/1",
-			   "http://tp4.sinaimg.cn/1565248803/180/1299136772/1"];	
+			   "http://tp3.sinaimg.cn/1584480830/180/5629789926/1"
+			   ];	
 	};
 	var countOfPlayers = getHeaders().length;
 	
 	var color = ["club", "spade", "diamond", "heart"];
+	var config = {
+		canvasWidth : canvas.width,
+		canvasHeight : canvas.height,
+		paddingTop : 5,
+		players : countOfPlayers,
+		headerWidth : 150,
+		headerHeight : 150,
+		smallPokerWidth : 70,
+		smallPokerHeight : 96,
+		bigPokerWidth : 140,
+		bigPokerHeight : 192
+	};
+	var position = new Position(config);
 
 	var start = function() {
 		init();
 	};
-
+			
 	var init = function() {
 		resource = new Resource();
 		var names = getImages();
@@ -40,61 +54,80 @@ var Game = function() {
 			}
 		});
 
-		canvas = document.getElementById("gameBoard");
 		canvas.addEventListener("mousedown", function() {
 			stop = false;
 			shufflePokers();					
 		});
 		canvas.addEventListener("mouseup", function() {
 			stop = true;
+			currentMovingPoker = 0;
 		});
 
 
 		//$(document).bind("keydown", function(e) {
 		//	shufflePokers();					
 		//});
-		ctx = canvas.getContext("2d");
 	};
 
+	window.requestAnimFrame = (function(callback){
+		return window.requestAnimationFrame ||
+			window.webkitRequestAnimationFrame ||
+			window.mozRequestAnimationFrame ||
+			window.oRequestAnimationFrame ||
+			window.msRequestAnimationFrame ||
+			function(callback){
+				window.setTimeout(callback, 1000 / 30);
+			};
+	})();
+	
+	var currentMovingPoker = 0;
+	function dispatchPokersToPlayers(pokers) {
+			if (currentMovingPoker == countOfPlayers) {
+				return;
+			}
+			ctx.clearRect(0, 0, canvas.width, canvas.height);
+			drawBg();
+			drawHeaders();
+			drawPokers(pokers);
+			movePoker(pokers[currentMovingPoker]);	
+			requestAnimFrame(function(){
+				dispatchPokersToPlayers(pokers);
+			});
+	}
+	 
 	var shufflePokers = function() {
-		var images = [];
-		var randPoker = new Poking().pokerDumbbell(countOfPlayers);
+		var pokers = [];
+		var randPoker = poking.pokerDumbbell(countOfPlayers);
 		for (var i=0; i<randPoker.length; i++) {
 			var img = resource.get(color[randPoker[i].color] + "/" + (randPoker[i].index + 1));
-			images.push(img);
-			img.addEventListener("click", function() {
-				alert(1);		
-			});
-			ctx.drawImage(img, 490 + i*25, 560, 90, 120);
+			var x = 490 + i*25;
+			var y = 560;
+			var dst = position.getPoker(i);
+			pokers[i] = new Poker(img, x, y, dst.x, dst.y, config.smallPokerWidth, config.smallPokerHeight, config.bigPokerWidth, config.bigPokerHeight);
+			ctx.drawImage(img, x, y);
 		}
 	
 		if (!stop) {
 			setTimeout(shufflePokers, 50);
 		}
 		
-		dispatchPokersToPlayers(images);
+		dispatchPokersToPlayers(pokers);
 	};
 
-	var dispatchPokersToPlayers = function(images) {
-		for (var i=0; i<countOfPlayers; i++) {
-			dispatchPoker(i, images[i]);	
+	var movePoker = function(poker) {
+		if (poker.isArrive()) {
+			currentMovingPoker++;
+			return;
+		}
+		poker.change();
+	};
+
+	var drawPokers = function(pokers) {
+		for (i in pokers) {
+			ctx.drawImage(pokers[i].image, pokers[i].x, pokers[i].y, pokers[i].width, pokers[i].height);
 		}	
 	};
-
-	var dispatchPoker = function(i, image) {
-		var x = 490 + i*25;
-		var y = 560; 
-		anim(image, x, y);
-	};
-
-	var anim = function(image, x, y) {
-			ctx.drawImage(image, x, y);	
-			x -= 1;
-			y -= 1;
-			if (x > 50 || y > 150) {
-				setTimeout(anim(image, x, y), 3000);
-			}
-	}
+	
 	var drawProgress = function(progress) {
 		ctx.fillStyle = "rgb(250, 250, 250)";                     
 		ctx.font = "24px Helvetica";
@@ -106,22 +139,24 @@ var Game = function() {
 	var drawBg = function() {
 		var img = resource.get("common/bg");
 		if (img) {
-			ctx.drawImage(img, 0, 0, 1200, 700);	
+			ctx.drawImage(img, 0, 0, config.canvasWidth, config.canvasHeight);	
 		}
 	};
 
 	var drawHeaders = function() {
 		var headers = getHeaders();
-		for (i in headers) {
+		for (var i=0; i<countOfPlayers; i++) {
 			var header = headers[i];	
 			var img = resource.get(header);
-			ctx.drawImage(img, 50 + i*220, 5, 150, 150);
+			var p = position.getHeader(i);
+			ctx.drawImage(img, p.x, p.y, config.headerWidth, config.headerHeight);
 		}
 	};
 
 	var getImages = function() {
 		var names = [];	
 		names.push("common/bg");
+		names.push("common/hide");
 		for (var i=0; i<13; i++) {
 			names.push("club/" + (i + 1));	
 			names.push("heart/" + (i + 1));	
